@@ -6,6 +6,7 @@
   "scripts": {
     "build": "python3 build.py",
     "serve": "python3 -m http.server 8787 -d dist",
+    "serve:3090": "\"${POSEWEAR_MEDIA_PYTHON:-$HOME/.local/share/openbot-private-media/voice-venv/bin/python}\" scripts/serve-local.py",
     "test": "node tests/v12.js && node tests/v13.js",
     "deploy": "wrangler pages deploy dist --project-name posewear"
   },

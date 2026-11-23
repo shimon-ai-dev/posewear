@@ -3,9 +3,17 @@ let Q0='',QT='';try{const u=new URLSearchParams(location.search);Q0=(u.get('q')|
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s),LS=k=>{try{return JSON.parse(localStorage[k]||'null')}catch(e){return null}},SV=(k,v)=>{try{localStorage[k]=JSON.stringify(v)}catch(e){}};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const RM=matchMedia('(prefers-reduced-motion: reduce)').matches,HOVER=matchMedia('(hover:hover) and (pointer:fine)').matches;
-const ITEMS={},DATA={},LOAD={},TABS=['pose','depth','costume','anime','portrait','expr','hair','dyn','scene','light','prop','furn','studio','fav','recent'],TNAME={pose:'姿势库',depth:'深度姿势',costume:'服装库',anime:'动画服装库',portrait:'人像库',expr:'表情库',hair:'发型库',dyn:'历代服饰',scene:'场景库',light:'光影库',prop:'道具库',furn:'家具库',studio:'试穿',fav:'我的收藏',recent:'最近浏览'};
+const LOCAL_PAGES={assets:'#assets',faces:'#faces',parts:'#parts','local-portraits':'#portrait/uploads'};
+const ITEMS={},DATA={},LOAD={},TABS=['pose','depth','costume','anime','portrait','expr','hair','dyn','scene','light','prop','furn','studio','fav','recent',...Object.keys(LOCAL_PAGES)],TNAME={pose:'姿势库',depth:'深度姿势',costume:'服装库',anime:'动画服装库',portrait:'人像库',expr:'表情库',hair:'发型库',dyn:'历代服饰',scene:'场景库',light:'光影库',prop:'道具库',furn:'家具库',studio:'试穿',assets:'人物资产',faces:'换脸库',parts:'部位','local-portraits':'本地人像',fav:'我的收藏',recent:'最近浏览'};
 const PFX={pose:'p:',depth:'d:',costume:'c:',anime:'a:',portrait:'r:',expr:'e:',hair:'h:',dyn:'y:',scene:'s:',light:'l:',prop:'t:',furn:'f:'},KT={p:'pose',d:'depth',c:'costume',a:'anime',r:'portrait',e:'expr',h:'hair',y:'dyn',s:'scene',l:'light',t:'prop',f:'furn'},TL=it=>({pose:'姿势',depth:'深度姿势',costume:'服装',anime:'动画服装',portrait:'人像',expr:'表情',hair:'发型',dyn:'历代服饰',scene:'场景',light:'光影',prop:'道具',furn:'家具'})[it.type];
 const st={tab:'pose',q:'',f:{},sort:'def',lang:LS('lang')||'zh',tl:LS('tl')||'zh',fav:new Set(LS('fav')||[]),sel:LS('sel')||[],rec:LS('rec')||[],recT:LS('recT')||{},ang:LS('ang')||{},list:[],n:0,adult:LS('adult')===true};
+const menuSettings = $('#menuSettings');
+const menuChoices = [...menuSettings.querySelectorAll('input')];
+const optionalMenus = new Map(menuChoices.map(input => [input.value, $('.tabs [data-tab="' + input.value + '"]')]));
+const savedMenus = LS('galleryMenus');
+const visibleMenus = new Set(Array.isArray(savedMenus) ? savedMenus : []);
+const isMenuVisible = tab => !optionalMenus.has(tab) || visibleMenus.has(tab);
+const emptyLinks = [['pose','姿势库'], ['costume','服装库'], ['portrait','人像库'], ['expr','表情库'], ['dyn','历代服饰'], ['scene','场景库']];
 const ok=it=>it&&(st.adult||!it.a);
 function load(t){return LOAD[t]||(LOAD[t]=fetch({pose:'poses.json',depth:'depths.json',costume:'costumes.json',anime:'anime.json',portrait:'portraits.json',expr:'expressions.json',hair:'hair.json',dyn:'dynasties.json',scene:'scenes.json',light:'lights.json',prop:'props.json',furn:'furniture.json'}[t]).then(r=>{if(!r.ok)throw Error(r.status);return r.json()}).then(raw=>{const a=Array.isArray(raw)?raw:(raw.items||[]);if(t=='depth')DATA.depthMeta=raw.pack||null;a.forEach((it,i)=>{it.type=t;it.k=PFX[t]+it.id;it.ord=i;if(it.angles)it.ai=st.ang[it.k]||0;ITEMS[it.k]=it});DATA[t]=a;if(t=='depth')paintDepth();counts();return a}).catch(e=>{delete LOAD[t];throw e}))}
 const needKeys=ks=>Promise.all([...new Set(ks.map(k=>KT[k[0]]).filter(Boolean))].map(load));
@@ -55,8 +63,19 @@ function drawFilters(){
  }
  const act=Object.entries(st.f).filter(e=>e[1]);$('#active').innerHTML=act.map(([k,v])=>`<button data-k="${k}" title="移除此条件">${FLAB[k]}：${esc(v)} ✕</button>`).join('');$('#fN').textContent=act.length||'';$('#clearAll').hidden=!(act.length||st.q)}
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]]}return a}
-function apply(){const q=st.q.toLowerCase().trim().split(/\s+/).filter(Boolean);
- let L=base().filter(it=>Object.entries(st.f).every(([k,v])=>!v||val(it,k).includes(v))&&q.every(w=>(it._s||(it._s=[it.id,it.ti,it.zh,it.en,it.ja,it.kw,it.cat,it.catEn,it.catJa,it.line,it.lineJa,it.no,it.sec,it.len,it.st,...(it.angles||[]).flatMap(a=>[a.zh,a.en,a.ja])].join(' ').toLowerCase())).includes(w)));
+const searchTerms=query=>query.toLowerCase().trim().split(/\s+/).filter(Boolean);
+function matchesSearch(it,words){
+ if(!words.length)return true;
+ const haystack=it._s||(it._s=[it.id,it.ti,it.zh,it.en,it.ja,it.kw,it.cat,it.catEn,it.catJa,it.line,it.lineJa,it.no,it.sec,it.len,it.st,...(it.angles||[]).flatMap(a=>[a.zh,a.en,a.ja])].join(' ').toLowerCase());
+ return words.every(word=>haystack.includes(word));
+}
+function paginate(items,index){
+ const size=36, pages=Math.max(1,Math.ceil(items.length/size));
+ const current=Math.max(0,Math.min(index,pages-1));
+ return {items:items.slice(current*size,(current+1)*size),current,pages,total:items.length};
+}
+function apply(){const q=searchTerms(st.q);
+ let L=base().filter(it=>Object.entries(st.f).every(([k,v])=>!v||val(it,k).includes(v))&&matchesSearch(it,q));
  if(st.f.ang)L.forEach(it=>{const i=it.angles.findIndex(a=>a.zh==st.f.ang);if(i>=0)it.ai=i});
  if(st.sort=='id')L=L.slice().reverse();else if(st.sort=='shuf')L=shuffle(L.slice());else if(st.sort=='rank')L=L.slice().sort((a,b)=>(a.rk||a.rc&&a.rc+10||999)-(b.rk||b.rc&&b.rc+10||999));else if(st.sort=='fav')L=L.slice().sort((a,b)=>st.fav.has(b.k)-st.fav.has(a.k));
  st.list=L;const tot=base().length;const imgs=a=>a.reduce((n,it)=>n+(it.angles?it.angles.length:1),0);
@@ -65,7 +84,7 @@ function apply(){const q=st.q.toLowerCase().trim().split(/\s+/).filter(Boolean);
  document.body.classList.toggle('none0',(st.tab=='fav'||st.tab=='recent')&&!tot);
  if(em){const none=(st.tab=='fav'||st.tab=='recent')&&!tot;$('#emptyT').textContent=none?(st.tab=='fav'?'还没有收藏':'还没有浏览记录'):'没有找到匹配的内容';
   $('#emptyP').textContent=none?(st.tab=='fav'?'看到喜欢的，点卡片右上角的 ♡。收藏只存在这台设备的浏览器里，可以导出备份。':'打开过的大图会按时间排在这里，最多保留 100 条。'):'换个关键词试试，或者看看这些热门搜索：';
-  $('#sugg').innerHTML=none?'':(SUGG[st.tab]||[]).map(s=>`<button class="chip" data-s="${s}">${s}</button>`).join('');$('#reset').hidden=none;$('#empty .emo').innerHTML=none?(st.tab=='fav'?EI.fav:EI.rec):EI.q;$('#emptyGo').innerHTML=none?'<button class="sm" data-go="pose">逛姿势库</button><button class="sm" data-go="depth">逛深度姿势</button><button class="sm" data-go="costume">逛服装库</button><button class="sm" data-go="anime">逛动画服装</button><button class="sm" data-go="portrait">逛人像库</button><button class="sm" data-go="expr">逛表情库</button><button class="sm" data-go="dyn">逛历代服饰</button><button class="sm" data-go="scene">逛场景库</button>':''}
+  $('#sugg').innerHTML=none?'':(SUGG[st.tab]||[]).map(s=>`<button class="chip" data-s="${s}">${s}</button>`).join('');$('#reset').hidden=none;$('#empty .emo').innerHTML=none?(st.tab=='fav'?EI.fav:EI.rec):EI.q;$('#emptyGo').innerHTML=none ? emptyLinks.filter(([tab])=>isMenuVisible(tab)).map(([tab,name])=>`<button class="sm" data-go="${tab}">逛${name}</button>`).join('') : ''}
  more()}
 function card(it,d){const isS=st.sel.includes(it.k),isF=st.fav.has(it.k),P=it.type=='pose',D=it.type=='depth',A2=P||D||!!it.angles,t=title(it);
  const tags=P||D?[[it.line,''],[it.cat,'c']]:it.type=='portrait'?[[it.sec,'c'],[it.len,'']]:[[it.cat,'c'],...val(it,'item').slice(0,3).map(x=>[x,''])];
@@ -90,7 +109,7 @@ function toggleSel(k){const i=st.sel.indexOf(k);i>=0?st.sel.splice(i,1):st.sel.p
 function combo(lang){const its=st.sel.map(k=>ITEMS[k]).filter(Boolean),p=its.filter(i=>i.type=='pose'),d=its.filter(i=>i.type=='depth'),c=its.filter(i=>i.type=='costume'||i.type=='anime'||i.type=='dyn'),r=its.filter(i=>i.type=='portrait'),e=its.filter(i=>i.type=='expr'),h=its.filter(i=>i.type=='hair'),s=its.filter(i=>i.type=='scene'),l=its.filter(i=>i.type=='light');
  if(lang=='en')return['masterpiece, best quality, 1girl',...r.map(i=>i.en.replace(/, consistent facial features, face reference$/,'')),...c.map(i=>i.en.replace(/^\w+ outfit, /,'')),...h.map(i=>'hairstyle: '+i.en),...e.map(i=>'expression: '+i.en),...p.map(i=>prompt(i,'en')),...d.map(i=>'depth reference, '+prompt(i,'en')),...s.map(i=>'scene: '+prompt(i,'en')),...l.map(i=>'lighting: '+prompt(i,'en'))].join(', ');
  return['杰作，最佳画质，一位女性',...r.map(i=>'人物：'+i.len+(i.st?'，'+i.st:'')),...c.map(i=>i.zh.replace(/。$/,'')),...h.map(i=>'发型：'+i.ti),...e.map(i=>'神态：'+i.zh),...p.map(i=>'摆出「'+prompt(i,'zh')+'」的姿势'),...d.map(i=>'深度姿势参考：'+prompt(i,'zh')),...s.map(i=>'场景：'+prompt(i,'zh')),...l.map(i=>'光线：'+prompt(i,'zh'))].join('；')+'。'}
-function tray(added){const n=st.sel.length;if(st.tab=='studio'){$('#tray').hidden=true;document.body.classList.remove('tray');return}$('#tray').hidden=!n;document.body.classList.toggle('tray',n>0);if(!n)return;if(added&&innerWidth>760)$('#tray').classList.remove('min');if(added&&innerWidth<=760&&n==1){$('#tray').classList.add('min');$('#trayMin').textContent='展开'}
+function tray(added){const n=st.sel.length;if(workbenchOpen()||LOCAL_PAGES[st.tab]){$('#tray').hidden=true;document.body.classList.remove('tray');return}$('#tray').hidden=!n;document.body.classList.toggle('tray',n>0);if(!n)return;if(added&&innerWidth>760)$('#tray').classList.remove('min');if(added&&innerWidth<=760&&n==1){$('#tray').classList.add('min');$('#trayMin').textContent='展开'}
  const UN={pose:'个姿势',depth:'个深度姿势',costume:'套服装',anime:'套服装',portrait:'个人像',expr:'个表情',hair:'款发型',dyn:'套历代服饰',scene:'个场景',light:'种光影',prop:'件道具',furn:'件家具'},tc={};st.sel.forEach(k=>{const it=ITEMS[k];if(it)tc[it.type]=(tc[it.type]||0)+1});$('#trayN').textContent=Object.entries(tc).map(([t,m])=>`${m} ${UN[t]||'项'}`).join(' · ');
  $$('[data-tl]').forEach(b=>b.classList.toggle('on',b.dataset.tl==st.tl));
  $('#trayItems').innerHTML=st.sel.map(k=>ITEMS[k]?`<div><img src="${esc(thumb(ITEMS[k]))}"${ITEMS[k].ref?` referrerpolicy="${esc(ITEMS[k].ref)}"`:''} alt="${esc(title(ITEMS[k]))}"><em>${TL(ITEMS[k])}</em><b data-k="${k}" title="移除" role="button" aria-label="移除">×</b></div>`:'').join('');$('#trayText').textContent=combo(st.tl)}
@@ -132,28 +151,131 @@ function setLang(l,quiet){st.lang=l;SV('lang',l);document.documentElement.datase
 $$('button[data-lang]').forEach(b=>b.onclick=()=>setLang(b.dataset.lang));
 // 标签页
 function moveInd(){const b=$('.tabs button.on'),ind=$('.ind');if(!b)return;ind.style.width=b.offsetWidth+'px';ind.style.transform=`translateX(${b.offsetLeft}px)`}
+const GALLERY = {pose:'pose', depth:'pose', costume:'costume', anime:'costume', portrait:'portrait', 'local-portraits':'portrait'};
 function selectTab(tab) {
+ const gallery = GALLERY[tab];
+ const assetsAvailable=!$('#assetsTab').hidden;
+ $('#portraitToolbar').hidden=gallery!=='portrait'||(!assetsAvailable&&tab!=='local-portraits');
+ $('#portraitUpload').hidden=!assetsAvailable;
  for (const button of $$('.tabs button')) {
-  const selected = button.dataset.tab === tab;
+  const selected = !button.hidden && button.dataset.tab === (gallery||tab);
   button.classList.toggle('on', selected);
   button.setAttribute('aria-selected', selected);
+ }
+ for (const group of $$('.gallery-types')) {
+  group.hidden = group.dataset.gallery !== gallery;
+  for (const button of group.querySelectorAll('button')) {
+   const selected = button.dataset.galleryTab === tab;
+   button.classList.toggle('on', selected);
+   button.setAttribute('aria-pressed', selected);
+  }
  }
  moveInd();
  $('.tabs button.on')?.scrollIntoView({block:'nearest',inline:'nearest'});
 }
-async function setTab(t,openId){$('#porNote').hidden=t!='portrait';$('#depthNote').hidden=t!='depth';const sn=$('#srcNote');if(sn){sn.hidden=!NOTES[t];if(NOTES[t])sn.innerHTML=NOTES[t]}document.body.classList.toggle('depth',t=='depth');if(t=='studio'){st.tab=t;selectTab(t);document.title='试穿 · 衣姿 PoseWear';history.replaceState(null,'','#studio');document.body.classList.add('studio');$('#studio').hidden=false;$('#tray').hidden=true;scrollTo({top:0});window.WB&&WB.show();return}
- if(document.body.classList.contains('studio')){document.body.classList.remove('studio');$('#studio').hidden=true;tray()}
+const workbenchPanel=$('#workbenchPanel');
+const workbenchToggle=$('#workbenchToggle');
+const workbenchBackground=$$('.top,.hero,#depthNote,#srcNote,#intro,#ann,#bar,#filters,#porNote,#grid,#empty,#assetLibrary,.foot,.seoc,#toTop');
+const workbenchOpen=()=>!workbenchPanel.hidden;
+let workbenchOpener=null;
+
+function openWorkbench(){
+ if(workbenchOpen())return;
+ workbenchOpener=document.activeElement;
+ if(location.hash!=='#studio')history.pushState({posewearWorkbench:true},'','#studio');
+ workbenchPanel.hidden=false;
+ document.body.classList.add('workbench-open');
+ workbenchToggle.setAttribute('aria-expanded','true');
+ for(const element of workbenchBackground)element.inert=true;
+ tray();
+ $('#workbenchClose').focus({preventScroll:true});
+ window.WB?.show();
+}
+function closeWorkbench(navigate=true){
+ if(!workbenchOpen())return;
+ workbenchPanel.hidden=true;
+ document.body.classList.remove('workbench-open');
+ workbenchToggle.setAttribute('aria-expanded','false');
+ for(const element of workbenchBackground)element.inert=false;
+ tray();
+ if(navigate&&location.hash==='#studio'){
+  if(history.state?.posewearWorkbench)history.back();
+  else history.replaceState(null,'',LOCAL_PAGES[st.tab]||'#'+st.tab);
+ }
+ if(navigate)(workbenchOpener?.isConnected?workbenchOpener:workbenchToggle).focus({preventScroll:true});
+}
+workbenchToggle.onclick=()=>setTab('studio');
+$('#workbenchClose').onclick=$('#workbenchBackdrop').onclick=()=>closeWorkbench();
+
+async function setTab(t,openId){
+ if(t==='studio'){
+  if(!st.tab)setTab('pose');
+  return openWorkbench();
+ }
+ closeWorkbench(false);
+ $('#porNote').hidden=t!='portrait';$('#depthNote').hidden=t!='depth';const sn=$('#srcNote');if(sn){sn.hidden=!NOTES[t];if(NOTES[t])sn.innerHTML=NOTES[t]}document.body.classList.toggle('depth',t=='depth');
+ const localPage=LOCAL_PAGES[t];
+ document.body.classList.toggle('assets',!!localPage);
+ document.body.classList.toggle('local-portraits',t==='local-portraits');
+ $('#assetLibrary').hidden=!localPage;
+ if(localPage){
+  st.tab=t;
+  selectTab(t);
+  document.title=TNAME[t]+' · 衣姿 PoseWear';
+  history.replaceState(null,'',t==='assets'&&['uploaded','generated'].includes(openId)?localPage+'/'+openId:localPage);
+  document.body.classList.remove('compact','none0');
+  tray();
+  scrollTo({top:0});
+  window.AssetLibrary?.show(t,openId);
+  return;
+ }
  const changed=st.tab!=t;st.tab=t;if(changed)grid.classList.add('gbusy');st.f={};st.q='';$('#q').value='';$('#qx').hidden=true;
  selectTab(t);
  document.title=TNAME[t]+' · 衣姿 PoseWear';if(!openId)history.replaceState(null,'','#'+t);
  $('#rand').hidden=t=='fav'||t=='recent';$('#favTools').hidden=t!='fav';$('#clrRec').hidden=t!='recent';$('#sort').hidden=t=='recent';$('#porNote').hidden=t!='portrait';$('#depthNote').hidden=t!='depth';$('#q').placeholder=t=='depth'?'搜姿势名、系列、分类':(innerWidth<=760?'搜索':'搜姿势、颜色、单品');$('#sort option[value=rank]').hidden=t!='portrait';if(t!='portrait'&&st.sort=='rank'){st.sort='def';$('#sort').value='def'}
  document.body.classList.toggle('compact',t=='fav'||t=='recent');
  if((!DATA[t]&&!(t=='pose'&&grid.querySelector('.ssr')))||t=='fav'||t=='recent'){grid.innerHTML='<div class="skel"></div>'.repeat(10);$('#empty').hidden=true}
- try{if(t=='fav')await needKeys([...st.fav]);else if(t=='recent')await needKeys(st.rec);else await load(t)}catch(e){grid.innerHTML='';$('#empty').hidden=false;$('#emptyT').textContent='数据加载失败';$('#emptyP').textContent='请检查网络后刷新页面重试';$('#sugg').innerHTML='';$('#reset').hidden=true;$('#empty .emo').innerHTML=EI.q;delete LOAD[t];grid.classList.remove('gbusy');$('#emptyGo').innerHTML='<button class="sm pri" id="retry">重新加载</button>';$('#retry').onclick=()=>{st.tab='';setTab(t)};return}
- if(st.tab!=t)return;if(Q0){st.q=Q0;$('#q').value=Q0;$('#qx').hidden=false;Q0=''}const go=()=>{drawFilters();apply()};if(changed)await viewT(go);else go();grid.classList.remove('gbusy');
+ try{if(t=='fav')await needKeys([...st.fav]);else if(t=='recent')await needKeys(st.rec);else await load(t)}catch(e){delete LOAD[t];if(st.tab!==t)return;grid.innerHTML='';$('#empty').hidden=false;$('#emptyT').textContent='数据加载失败';$('#emptyP').textContent='请检查网络后刷新页面重试';$('#sugg').innerHTML='';$('#reset').hidden=true;$('#empty .emo').innerHTML=EI.q;grid.classList.remove('gbusy');$('#emptyGo').innerHTML='<button class="sm pri" id="retry">重新加载</button>';$('#retry').onclick=()=>{st.tab='';setTab(t)};return}
+ if(st.tab!=t)return;if(Q0){st.q=Q0;$('#q').value=Q0;$('#qx').hidden=false;Q0=''}const go=()=>{if(st.tab===t){drawFilters();apply()}};if(changed)await viewT(go);else go();if(st.tab!==t)return;grid.classList.remove('gbusy');
  if(openId)openById(openId)
  else if(changed&&scrollY>$('#bar').offsetTop)scrollTo({top:$('#hero').offsetHeight&&t!='fav'&&t!='recent'?$('#bar').offsetTop-60:0})}
-$('.tabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;const t=b.dataset.tab;if(t==st.tab&&!document.body.classList.contains('studio')){scrollTo({top:0,behavior:RM?'auto':'smooth'});return}if(location.hash!='#'+t)history.pushState(null,'','#'+t);setTab(t)};addEventListener('resize',()=>{moveInd();hdr()});
+for (const nav of $$('.tabs, .gallery-types')) {
+ nav.addEventListener('click', event => {
+  const button = event.target.closest('button');
+  if (!button) return;
+  const {tab, galleryTab} = button.dataset;
+  const target = galleryTab || tab;
+  const current = galleryTab ? st.tab : (GALLERY[st.tab] || st.tab);
+  if (target === current) {
+   scrollTo({top:0, behavior:RM ? 'auto' : 'smooth'});
+   return;
+  }
+  const hash = LOCAL_PAGES[target] || '#' + target;
+  if (location.hash !== hash) history.pushState(null, '', hash);
+  setTab(target);
+ });
+}
+addEventListener('resize',()=>{moveInd();hdr()});
+for (const input of menuChoices) {
+ input.checked = visibleMenus.has(input.value);
+ optionalMenus.get(input.value).hidden = !input.checked;
+}
+$('#menuSettingsToggle').onclick = () => menuSettings.showModal();
+menuSettings.addEventListener('change', event => {
+ const {value:tab, checked} = event.target;
+ const button = optionalMenus.get(tab);
+ if (!button) return;
+ if (checked) visibleMenus.add(tab);
+ else visibleMenus.delete(tab);
+ SV('galleryMenus', [...visibleMenus]);
+ button.hidden = !checked;
+ if (st.tab === tab) {
+  if (checked) selectTab(tab);
+  else setTab('pose');
+ } else if (st.tab === 'fav' || st.tab === 'recent') {
+  apply();
+ }
+});
 function theme(){const go=()=>{const t=document.documentElement.dataset.theme=document.documentElement.dataset.theme=='dark'?'light':'dark';SV('theme',t);localStorage.theme=t;$('meta[name=theme-color]').content=t=='dark'?'#111111':'#ffffff'};if(document.startViewTransition&&!RM){const v=document.startViewTransition(go);v.ready.catch(()=>{});v.finished.catch(()=>{})}else go()}
 $('#theme').onclick=theme;$('#help').onclick=()=>$('#helpBox').hidden=false;$('#helpBox').onclick=e=>{if(e.target.id=='helpBox'||e.target.dataset.close!=null)$('#helpBox').hidden=true};
 // 滚动
@@ -167,7 +289,7 @@ $('#exp').onclick=()=>{if(!st.fav.size)return toast('还没有收藏可导出');
 $('#imp').onclick=()=>$('#impF').click();$('#impF').onchange=async e=>{try{const j=JSON.parse(await e.target.files[0].text());const ks=(j.收藏||[]).map(x=>x.key).filter(k=>/^[pcradehysltf]:/.test(k));await needKeys(ks);let n=0;ks.forEach(k=>{if(ITEMS[k]&&!st.fav.has(k)){st.fav.add(k);n++}});SV('fav',[...st.fav]);counts();setTab('fav');toast('已导入 '+n+' 条收藏')}catch(err){toast('导入失败：文件格式不正确')}e.target.value=''};
 $('#clrRec').onclick=()=>{if(!st.rec.length)return;const old=st.rec.slice();st.rec=[];SV('rec',[]);counts();viewT(apply);toast(`已清空 ${old.length} 条记录`,()=>{st.rec=old;SV('rec',old);counts();viewT(apply)})};
 $('#clrFav').onclick=()=>{if(!st.fav.size)return toast('还没有收藏');const old=[...st.fav];st.fav=new Set();SV('fav',[]);counts();viewT(apply);toast(`已清空 ${old.length} 条收藏`,()=>{st.fav=new Set(old);SV('fav',old);counts();viewT(apply)})};
-document.addEventListener('click',e=>{const b=e.target.closest('[data-go]');if(b){history.pushState(null,'','#'+b.dataset.go);setTab(b.dataset.go)}});
+document.addEventListener('click',e=>{const b=e.target.closest('[data-go]');if(b){if(b.dataset.go==='studio')window.WB?.useWorkspace('tryon');else history.pushState(null,'','#'+b.dataset.go);setTab(b.dataset.go)}});
 $('#introX').onclick=()=>{localStorage.introX=1;const el=$('#intro');RM?document.documentElement.classList.add('nointro'):el.animate([{opacity:1,height:el.offsetHeight+'px'},{opacity:0,height:0,paddingTop:0,paddingBottom:0,marginBottom:0}],{duration:220,easing:'cubic-bezier(.2,.7,.2,1)'}).finished.then(()=>document.documentElement.classList.add('nointro'))};
 $('#annX').onclick=()=>{localStorage.annAnime=1;document.documentElement.classList.add('noann')};
 addEventListener('offline',()=>toast('网络已断开，看过的图片还能继续浏览'));addEventListener('online',()=>toast('网络已恢复'));
@@ -204,10 +326,15 @@ const share=()=>copy(location.href,'分享链接');
 $('#lbSide').onclick=e=>{const it=st.list[li],t=e.target.closest('button');if(!t)return;if(t.dataset.ai){setAng(it,+t.dataset.ai);lbDraw()}if(t.dataset.c)copy(prompt(it,t.dataset.c),t.dataset.c=='en'?'英文提示词':'中文描述');if(t.dataset.x=='fav')toggleFav(it.k);if(t.dataset.x=='sel')toggleSel(it.k);if(t.dataset.x=='share')share();if(t.dataset.x=='try'){lbClose();window.WB&&WB.pick(it)}};
 const step=d=>{li=(li+d+st.list.length)%st.list.length;lbDraw();if(!RM)$('#lbImg').animate([{opacity:.3,transform:`translateX(${d*30}px)`},{opacity:1,transform:'none'}],{duration:320,easing:'cubic-bezier(.16,1,.3,1)'})};
 $('.lb-bg').onclick=lbClose;$('.lb-x').onclick=lbClose;$('.prev').onclick=()=>step(-1);$('.next').onclick=()=>step(1);
-addEventListener('keydown',e=>{if(e.ctrlKey||e.metaKey||e.altKey)return;const ae=document.activeElement,inp=ae&&/^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName);
+addEventListener('keydown',e=>{if(e.ctrlKey||e.metaKey||e.altKey||menuSettings.open||document.querySelector('.asset-dialog[open]'))return;
+ if(workbenchOpen()){
+  if(e.key==='Escape'&&$('#pk').hidden&&$('#cfg').hidden)closeWorkbench();
+  return;
+ }
+ const ae=document.activeElement,inp=ae&&/^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName);
  if(e.key=='Escape'){if(!$('#ageBox').hidden)return $('#ageBox').hidden=true;if(!$('#privBox').hidden)return $('#privBox').hidden=true;if(!$('#helpBox').hidden)return $('#helpBox').hidden=true;if(!$('#lb').hidden)return lbClose();drawer(false);if(inp)ae.blur();return}if(inp)return;
  if(e.key=='?'){$('#helpBox').hidden=!$('#helpBox').hidden;return}const k=(e.key||'').toLowerCase();
- if($('#lb').hidden){if(e.key=='/'){e.preventDefault();$('#q').focus()}else if(k=='r'&&st.tab!='studio'&&!$('#rand').hidden)randPick();else if(k=='t')theme();else if(k=='l')setLang(st.lang=='zh'?'en':'zh');else if('12345678'.includes(e.key)&&TABS[e.key-1])setTab(TABS[e.key-1]);return}
+ if($('#lb').hidden){if(e.key=='/'){e.preventDefault();$('#q').focus()}else if(k=='r'&&FDEF[st.tab]&&!$('#rand').hidden)randPick();else if(k=='t')theme();else if(k=='l')setLang(st.lang=='zh'?'en':'zh');else if('12345678'.includes(e.key)&&TABS[e.key-1]&&isMenuVisible(TABS[e.key-1]))setTab(TABS[e.key-1]);return}
  const it=st.list[li];if(e.key=='ArrowLeft')step(-1);else if(e.key=='ArrowRight')step(1);
  else if(/Arrow(Up|Down)/.test(e.key)&&it.angles){e.preventDefault();setAng(it,(it.ai+(e.key=='ArrowUp'?-1:1)+it.angles.length)%it.angles.length);lbDraw()}
  else if(k=='f')toggleFav(it.k);else if(k=='a')toggleSel(it.k);else if(k=='c')copy(prompt(it,'zh'),'中文描述');else if(k=='s')share();
@@ -218,9 +345,18 @@ function countUp(){$$('.stats b').forEach(b=>{const n=+(st.adult&&b.dataset.na||
 // 路由
 function openById(id){let i=st.list.findIndex(x=>x.id==id);if(i>=0)return lbOpen(i);const it=(DATA[st.tab]||[]).find(x=>x.id==id);if(!it)return toast('未找到该条目');
  if(!ok(it))return ageAsk(()=>openById(id));st.f={};st.q='';$('#q').value='';drawFilters();apply();i=st.list.findIndex(x=>x.id==id);if(i>=0)lbOpen(i)}
-function route(){const [t,id]=location.hash.slice(1).split('/');const tab=TABS.includes(t)?t:'pose';if(!id&&tab==st.tab&&st.list.length)return;if(tab!=st.tab||!st.list.length||!id)setTab(tab,id&&decodeURIComponent(id));else openById(decodeURIComponent(id))}
+function route(){
+ const [t,id]=location.hash.slice(1).split('/');
+ if(t==='assets'&&['faces','parts'].includes(id))return setTab(id);
+ if((t==='portrait'||t==='assets')&&id==='uploads')return setTab('local-portraits');
+ const tab=TABS.includes(t)?t:'pose';
+ if(tab==='studio'||LOCAL_PAGES[tab])return setTab(tab,id);
+ closeWorkbench(false);
+ if(!id&&tab===st.tab&&st.list.length)return;
+ if(tab!==st.tab||!st.list.length||!id)setTab(tab,id&&decodeURIComponent(id));else openById(decodeURIComponent(id));
+}
 // 成人内容开关
-function ageSet(on,anim){st.adult=on;SV('adult',on);if(on)SV('ageOk',true);document.body.classList.toggle('adult',on);$('#adultSw').setAttribute('aria-checked',on);$('#adultSw').title=on?'成人向内容已显示，点击关闭':'成人向内容已隐藏，点击打开';counts();countUp();if(st.tab&&st.tab!='studio'&&st.tab!=''){const f=()=>{drawFilters();apply()};anim?viewT(f):f()}window.WB&&WB.show&&st.tab=='studio'&&WB.show()}
+function ageSet(on,anim){st.adult=on;SV('adult',on);if(on)SV('ageOk',true);document.body.classList.toggle('adult',on);$('#adultSw').setAttribute('aria-checked',on);$('#adultSw').title=on?'成人向内容已显示，点击关闭':'成人向内容已隐藏，点击打开';counts();countUp();if(FDEF[st.tab]){const f=()=>{drawFilters();apply()};anim?viewT(f):f()}workbenchOpen()&&window.WB?.show()}
 let ageCb=null;function ageAsk(cb){ageCb=cb||null;const seen=LS('ageOk');$('#ageT').textContent=cb?'这是成人向内容':'显示成人向内容？';$('#ageP').textContent=(cb?'要查看它，需要打开顶部的「18+」开关。':'包括双人互动、性感类姿势、深度姿势里的双人图，以及内衣、性感类服装。')+(seen?'打开后随时可以再关上。':'仅适合已满 18 岁的用户。只需确认一次，之后用顶部开关随时打开或关闭。');$('#ageY').textContent=seen?'打开 18+ 开关':'我已满 18 岁，打开';$('#ageBox').hidden=false;setTimeout(()=>$('#ageY').focus(),30)}
 $('#adultSw').onclick=()=>{if(st.adult){ageSet(false,1);toast('已关闭成人向内容')}else if(LS('ageOk')){ageSet(true,1);toast('已显示成人向内容')}else ageAsk()};
 $('#ageY').onclick=()=>{$('#ageBox').hidden=true;ageSet(true,!ageCb);toast('已显示成人向内容，可用顶部开关关闭');const c=ageCb;ageCb=null;c&&c()};
@@ -231,4 +367,4 @@ addEventListener('hashchange',()=>{const id=location.hash.split('/')[1];if(!$('#
 if(innerWidth<=760)$('#q').placeholder='搜索';setLang(st.lang,true);ageSet(st.adult);hdr();countUp();needKeys([...st.sel]).then(()=>tray()).catch(()=>{});st.tab='';if(Q0&&!location.hash)history.replaceState(null,'','?q='+encodeURIComponent(Q0)+'#'+(TABS.includes(QT)?QT:'costume'));route();
 if('serviceWorker'in navigator&&location.protocol!='file:')addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
 
-window.APP={ok,ageAsk,toggleFav,toggleSel,lbOpen,lbClose,apply,li:()=>li,load,ITEMS,DATA,thumb,big,ath,title,prompt,toast,esc,setTab,st,copy};
+window.APP={selectTab,workbenchOpen,catalogFilters:FDEF,catalogValue:val,searchTerms,matchesSearch,paginate,ok,ageAsk,toggleFav,toggleSel,lbOpen,lbClose,apply,li:()=>li,load,ITEMS,DATA,thumb,big,ath,title,prompt,toast,esc,setTab,st,copy};

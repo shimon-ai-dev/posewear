@@ -9,7 +9,7 @@ function pop(el){if(!RM&&el)el.animate([{transform:'scale(1)'},{transform:'scale
 function fly(img,target){if(RM||!img||!target)return;const a=img.getBoundingClientRect(),b=target.getBoundingClientRect();if(!a.width)return;const c=img.cloneNode();c.className='flyimg';c.style.cssText=`left:${a.left}px;top:${a.top}px;width:${a.width}px;height:${a.height}px`;document.body.append(c);
  const dx=b.left+b.width/2-(a.left+a.width/2),dy=b.top+b.height/2-(a.top+a.height/2);c.animate([{transform:'none',opacity:1,borderRadius:'14px'},{transform:`translate(${dx*.6}px,${dy*.6-40}px) scale(.35)`,opacity:.9,offset:.6},{transform:`translate(${dx}px,${dy}px) scale(.06)`,opacity:.2,borderRadius:'50%'}],{duration:640,easing:'cubic-bezier(.5,0,.2,1)'}).finished.then(()=>{c.remove();pop(target)})}
 X.fly=fly;X.pop=pop;
-const favTab=()=>$('.tabs button[data-tab=fav]'),stuTab=()=>$('.tabs button[data-tab=studio]');
+const favTab=()=>$('.tabs button[data-tab=fav]'),stuTab=()=>$('#workbenchToggle');
 grid.addEventListener('click',e=>{const b=e.target.closest('[data-a]');const card=e.target.closest('.card');if(!card)return;
  if(document.body.classList.contains('batch')){e.preventDefault();e.stopPropagation();card.classList.toggle('picked');pick(card.dataset.k);return}
  if(b&&b.dataset.a=='fav'){const k=card.dataset.k,on=!A.st.fav.has(k),img=card.querySelector('img');requestAnimationFrame(()=>{const nb=grid.querySelector(`.card[data-k="${CSS.escape(k)}"] [data-a=fav]`);if(on){pop(nb);burst(nb);fly(img,favTab())}})}

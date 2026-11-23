@@ -4,9 +4,17 @@ const {chromium}=require('playwright');const path=require('path'),SS=path.join(_
 const ok=(n,v,d)=>{R.push((v?'PASS ':'FAIL ')+n+(d?' :: '+d:''))};
 const W=(pg,f,a)=>pg.waitForFunction(f,a,{timeout:T}).then(()=>true).catch(()=>false);
 const ctx=await b.newContext({viewport:{width:1440,height:900}});const pg=await ctx.newPage();pg.on('pageerror',e=>errs.push(''+e));pg.on('console',m=>m.type()=='error'&&!/404/.test(m.text())&&errs.push(m.text()));
-await pg.goto(U+'/');ok('home grid',await W(pg,()=>document.querySelectorAll('#grid .card img.ld').length>=5));
+await pg.goto(U+'/');await pg.waitForFunction(()=>window.APP);ok('home grid',await W(pg,()=>document.querySelectorAll('#grid .card img.ld').length>=5));
 // ---- 各新栏目：数据条数 + 卡片渲染 + 导航计数 ----
 const EXP={expr:95,hair:122,dyn:57,scene:64,light:50,prop:32,furn:41}; // 历代/四库已剔除上游零视角空壳条目（历代 60−3、场景 68−4、光影 55−5、道具 36−4、家具 48−7）
+const settingsTabs=[...Object.keys(EXP),'fav','recent'];
+const settingsNav=settingsTabs.map(tab=>`.tabs button[data-tab=${tab}]`).join(',');
+ok('扩展栏目、收藏和最近默认隐藏', await pg.locator(settingsNav).evaluateAll(buttons=>buttons.every(button=>button.hidden)));
+await pg.getByRole('button',{name:'栏目设置'}).click();
+for (const tab of settingsTabs) await pg.locator(`#menuSettings input[value=${tab}]`).check();
+await pg.getByRole('button',{name:'完成',exact:true}).click();
+await pg.reload();
+ok('栏目设置刷新后保留', await pg.locator(settingsNav).evaluateAll(buttons=>buttons.every(button=>!button.hidden)));
 for(const [t,n] of Object.entries(EXP)){
   await pg.click(`[data-tab=${t}]`);
   await pg.evaluate(t=>APP.load(t),t);
@@ -36,13 +44,17 @@ const src1=await pg.evaluate(()=>document.querySelector('#lbImg').dataset.src);
 ok('灯箱切视角换图',src0!=src1&&/_back\.webp/.test(src1||''),src1);
 await pg.keyboard.press('Escape');await pg.evaluate(()=>{APP.st.f={};APP.apply()});
 // ---- 发型：热链 + 发色变体 ----
-await pg.click('[data-tab=hair]');await W(pg,()=>APP.st.tab=='hair'&&document.querySelector('#grid .card'));
-const hsrc=await pg.evaluate(()=>document.querySelector('#grid .card img').src);
+await pg.click('[data-tab=hair]');
+const hairThumb = pg.locator('#grid .card[data-k^="h:"] img.ld').first();
+await hairThumb.waitFor();
+const hsrc = await hairThumb.getAttribute('src');
 ok('发型图片热链原站',/^https:\/\/charadb-2fi\.pages\.dev\/thumb\//.test(hsrc),hsrc);
 ok('发型分组带 5 个发色变体',await pg.evaluate(()=>{const g=APP.DATA.hair.find(i=>i.angles);return g&&g.angles.length==5}));
 ok('发型单品条数',await pg.evaluate(()=>APP.DATA.hair.filter(i=>!i.angles).length==76));
 // ---- CharaDB 并入动画服装 ----
-await pg.click('[data-tab=anime]');await W(pg,()=>APP.st.tab=='anime'&&document.querySelector('#grid .card'));
+await pg.getByRole('tab',{name:'服装',exact:true}).click();
+await pg.locator('[data-gallery-tab=anime]').click();
+await W(pg,()=>APP.st.tab=='anime'&&document.querySelector('#grid .card[data-k^="a:"]'));
 ok('动画服装总数 1760',await pg.evaluate(()=>APP.DATA.anime.length==1760),await pg.evaluate(()=>''+APP.DATA.anime.length));
 ok('charadb 条目在位且标记 ext',await pg.evaluate(()=>{const it=APP.DATA.anime.find(i=>i.id=='charadb-O001');return !!it&&it.ext==1&&/^https:\/\/charadb/.test(it.t)}));
 ok('charadb 敏感条目默认隐藏',await pg.evaluate(()=>APP.DATA.anime.filter(i=>i.ext&&i.a).length==44&&APP.st.list.every(i=>!i.a)));
