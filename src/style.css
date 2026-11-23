@@ -656,8 +656,8 @@ body.local-portraits .asset-library{padding-top:8px}
 @media(min-width:861px){#studio .st-r .gobar{position:sticky;bottom:0;flex-shrink:0}}
 
 /* Editorial archive */
-@font-face{font-family:ArchiveSC;src:url(archive-cjk-400.ttf) format('truetype');font-weight:100 550;font-display:swap}
-@font-face{font-family:ArchiveSC;src:url(archive-cjk-700.ttf) format('truetype');font-weight:551 900;font-display:swap}
+@font-face{font-family:ArchiveSC;src:url(/archive-cjk-400.ttf) format('truetype');font-weight:100 550;font-display:swap}
+@font-face{font-family:ArchiveSC;src:url(/archive-cjk-700.ttf) format('truetype');font-weight:551 900;font-display:swap}
 :root{
  --sans:"PingFang SC","Microsoft YaHei",ArchiveSC,system-ui,sans-serif;
  --w:1504px;--gutter:clamp(16px,4vw,64px);

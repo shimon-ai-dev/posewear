@@ -2,7 +2,10 @@ const {chromium}=require('playwright');const path=require('path'),FX=path.join(_
 const ok=(n,v)=>{R.push((v?'PASS ':'FAIL ')+n)};
 const W=(pg,f,a)=>pg.waitForFunction(f,a,{timeout:T}).then(()=>true).catch(()=>false);
 const ctx=await b.newContext({viewport:{width:1440,height:900}});const pg=await ctx.newPage();pg.on('pageerror',e=>errs.push(''+e));pg.on('console',m=>m.type()=='error'&&!/404/.test(m.text())&&errs.push(m.text()));
-await pg.goto(U+'/');await pg.waitForFunction(()=>window.APP);ok('home grid',await W(pg,()=>document.querySelectorAll('#grid .card img.ld').length>=5));ok('intro visible',await pg.isVisible('#intro'));await pg.screenshot({path:S+'d-home.png'});
+await pg.goto(U+'/');await pg.waitForFunction(()=>window.APP);ok('home grid',await W(pg,()=>document.querySelectorAll('#grid .card img.ld').length>=5));ok('archive covers load',await W(pg,()=>{
+  const covers=document.querySelectorAll('.archive-cover img');
+  return covers.length===3 && [...covers].every(img=>img.complete && img.naturalWidth>0);
+}));await pg.screenshot({path:S+'d-home.png'});
 // tab switch timing
 const tt=await pg.evaluate(async()=>{const o=[];for(const t of ['costume','portrait','pose']){const t0=performance.now();document.querySelector(`[data-tab=${t}]`).click();await new Promise(r=>{const f=()=>APP.st.tab==t&&document.querySelector('#grid .card')&&!document.querySelector('#grid .skel')?r():requestAnimationFrame(f);f()});o.push(Math.round(performance.now()-t0))}return o});ok('tab switch ms '+tt,Math.max(...tt)<400);
 // back behaviour
@@ -22,8 +25,12 @@ await pg.evaluate(()=>document.querySelector('#grid .card .phk').click());await 
 ok('unfav in lb removes card',await W(pg,n=>document.querySelector('#lb').hidden&&document.querySelectorAll('#grid .card').length==n-1,nf));
 // refresh restore
 await pg.goto(U+'/#portrait');ok('refresh restore portrait',await W(pg,()=>APP.st.tab=='portrait'&&document.querySelector('#grid .card img')));
-// intro dismiss
-await pg.click('#introX');await pg.waitForTimeout(400);await pg.reload();await W(pg,()=>document.querySelector('#grid .card'));ok('intro dismissed persists',!(await pg.isVisible('#intro')));
+// The three editorial covers navigate to the matching gallery and filters.
+for (const tab of ['pose','costume','portrait']) {
+  await pg.click(`[data-archive="${tab}"]`);
+  ok('archive cover '+tab,await W(pg,t=>APP.st.tab===t && location.hash==='#'+t &&
+    document.querySelector(`[data-gallery-tab="${t}"]`)?.getAttribute('aria-pressed')==='true',tab));
+}
 // studio + settings
 await pg.click('[data-tab=studio]');await W(pg,()=>APP.workbenchOpen());await pg.waitForTimeout(800);await pg.screenshot({path:S+'d-studio.png'});ok('studio fits',(await pg.evaluate(()=>document.querySelector('#studio').getBoundingClientRect().height))<=900);
 // dark lb
